@@ -1015,6 +1015,33 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## Reverse DNS delegation
+
+Reverse delegation can be planned without contacting or updating a DNS
+server. IPv4 blocks narrower than a /24 use RFC 2317 CNAME delegation. IPv6
+blocks narrower than a nibble are split into exact nibble-aligned zones, so
+neighbouring addresses remain with the parent zone.
+
+```ruby
+plan = IPAddress.plan_reverse_delegation(
+  '192.0.2.0/24',
+  [
+    { subnet: '192.0.2.32/27', nameservers: ['ns1.example.net'] },
+    { subnet: '192.0.2.96/27', nameservers: ['ns2.example.net'] }
+  ],
+  existing_records: []
+)
+
+plan.parent_origin          #=> "2.0.192.in-addr.arpa"
+plan.parent_records.map(&:to_h)
+plan.ptr_name_for('192.0.2.33')
+plan.covers?('192.0.2.64')  #=> false
+```
+
+Each parent record includes its originating address range. Overlapping
+existing delegations and conflicting CNAME records are returned in
+`plan.conflicts` rather than silently replaced.
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
