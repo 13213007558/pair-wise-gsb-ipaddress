@@ -1015,6 +1015,39 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+
+## RFC 6724 address selection
+
+`IPAddress::RFC6724` is a pure calculator for RFC 6724 "Default Address
+Selection". Given the addresses a DNS lookup returned, it sorts the
+destinations and picks a source address for each of them. It never reads
+local network interfaces and never opens connections: scopes, address
+states, the policy table and route reachability are all explicit input.
+
+```ruby
+results = IPAddress::RFC6724.sort(
+  ["192.0.2.9", "2001:db8::9", "fe80::9%eth0"],
+  sources: [
+    IPAddress::RFC6724::SourceAddress.new(address: "2001:db8::1"),
+    IPAddress::RFC6724::SourceAddress.new(address: "fe80::1", interface: "eth0"),
+    IPAddress::RFC6724::SourceAddress.new(address: "192.0.2.1"),
+  ],
+  reachable: {"fe80::9%eth0" => false}
+)
+results.map(&:destination) #=> ["2001:db8::9", "192.0.2.9", "fe80::9%eth0"]
+results.first.source.address #=> "2001:db8::1"
+results.last.usable? #=> false
+```
+
+Each source address carries its state flags (`deprecated`, `home`,
+`temporary`) and its `interface`. A custom `policy_table` of
+`{prefix:, precedence:, label:}` entries can be passed in; the longest
+matching prefix wins, and the RFC 6724 default table is used otherwise.
+`reachable` and `interfaces` accept a boolean, a Hash keyed by
+destination, or a callable. Destinations with no suitable source get a
+`nil` source and sort last; destinations that compare fully equal keep
+their input order.
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
