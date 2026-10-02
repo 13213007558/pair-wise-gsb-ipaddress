@@ -13,6 +13,8 @@ Changelog
 
 - Add allocate() method
 - Add IPv4 and IPv6 subnet validation
+- Add IPAddress::RFC6724, a pure-computation RFC 6724 source and
+  destination address selector with an explicit policy table
 
 
 ## 0.8.3 - 2016-02-17

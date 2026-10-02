@@ -1015,6 +1015,46 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## RFC 6724 address selection
+
+When a DNS lookup returns several IPv4/IPv6 addresses for the same
+name, RFC 6724 defines the order in which a host should try them and
+which source address it should use for each. `IPAddress::RFC6724`
+implements that algorithm as a pure computation: nothing is read from
+the local interfaces and no connection is attempted. Scopes,
+deprecated/home/temporary flags, reachability, the outgoing interface
+and the policy table are all explicit input.
+
+```ruby
+sources = [
+  IPAddress::RFC6724::Source.new("192.0.2.10",  scope: 14),
+  IPAddress::RFC6724::Source.new("2001:db8::10", scope: 14, temporary: true),
+]
+destinations = [
+  IPAddress::RFC6724::Destination.new("93.184.216.34", scope: 14),
+  IPAddress::RFC6724::Destination.new("2001:db8::1",   scope: 14),
+  IPAddress::RFC6724::Destination.new("fe80::1%eth0",  scope: 2),
+]
+
+selector = IPAddress::RFC6724::Selector.new(sources: sources)
+selector.sort(destinations).each do |result|
+  result.usable?    #=> false when unreachable or no suitable source exists
+  result.source     #=> the selected IPAddress::RFC6724::Source (or nil)
+end
+```
+
+Labels and precedences come from the RFC 6724 default policy table;
+user entries can be added and take effect by longest prefix match:
+
+```ruby
+table = IPAddress::RFC6724::PolicyTable.new
+table.add("8.8.8.0/24", precedence: 100, label: 4)
+selector = IPAddress::RFC6724::Selector.new(sources: sources, policy_table: table)
+```
+
+Destinations that compare equal on every rule keep their input order,
+and unusable destinations sink to the bottom of the result.
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
