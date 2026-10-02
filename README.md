@@ -1015,6 +1015,70 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## Reverse DNS planning
+
+When a block like a /27 is assigned to a customer, a plain
++IPaddress#reverse+ cannot produce a usable reverse zone delegation.
++IPAddress::ReverseDNS+ plans the delegation for you: give it the parent
+prefix you control and a set of child prefixes with their name servers,
+and it computes the records to publish in the parent zone plus the PTR
+name mapping of every child zone. It only computes the plan, it never
+connects to a DNS server.
+
+IPv4 children on non-octet boundaries are delegated classlessly
+following RFC 2317 (a sub zone and one CNAME per address):
+
+```ruby
+plan = IPAddress::ReverseDNS.plan("192.0.2.0/24", [
+  {prefix: "192.0.2.0/27", nameservers: ["ns1.example.com", "ns2.example.com"]},
+])
+
+plan.parent_zone
+  #=> "2.0.192.in-addr.arpa"
+plan.zones.first.name
+  #=> "0/27.2.0.192.in-addr.arpa"
+plan.records.map(&:to_s)
+  #=> ["0/27.2.0.192.in-addr.arpa. NS ns1.example.com.",
+  #    "0/27.2.0.192.in-addr.arpa. NS ns2.example.com.",
+  #    "0.2.0.192.in-addr.arpa. CNAME 0.0/27.2.0.192.in-addr.arpa.",
+  #    ...]
+plan.records.first.range
+  #=> "192.0.2.0..192.0.2.31"
+plan.zones.first.ptr_name("192.0.2.5")
+  #=> "5.0/27.2.0.192.in-addr.arpa"
+```
+
+IPv6 children are split exactly on nibble boundaries, so a /65 becomes
+eight /68 zones and no adjacent address space is covered:
+
+```ruby
+plan = IPAddress::ReverseDNS.plan("2001:db8::/48", [
+  {prefix: "2001:db8:0:1::/65", nameservers: ["ns1.example.com"]},
+])
+plan.zones.size
+  #=> 8
+plan.zones.first.network.to_string
+  #=> "2001:db8:0:1::/68"
+```
+
+Already published delegations or records can be passed with the
++existing+ option; the plan reports address overlaps and CNAME
+conflicts instead of clobbering them:
+
+```ruby
+plan = IPAddress::ReverseDNS.plan("192.0.2.0/24",
+  [{prefix: "192.0.2.0/27", nameservers: ["ns1.example.com"]}],
+  existing: [{prefix: "192.0.2.16/28", nameservers: ["ns.other.example"]}])
+plan.valid?
+  #=> false
+plan.conflicts.first.type
+  #=> :overlap
+```
+
+Use +plan.delegation_chain(address)+ to simulate how an address
+resolves through the generated records, and +plan.zone_for(address)+
+to find the child zone covering an address.
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
