@@ -61,6 +61,7 @@ module IPAddress;
   class IPv6 
     
     include IPAddress
+    include IPAddress::Layout
     include Enumerable  
     include Comparable                  
 
@@ -961,4 +962,3 @@ module IPAddress;
   end # class IPv6::Mapped
 
 end # module IPAddress
-

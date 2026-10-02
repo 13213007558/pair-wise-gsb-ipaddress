@@ -519,6 +519,37 @@ network.split(11)
 As you can see, most of the networks are `/28`, with a few `/27` and one `/26`
 to fill up the remaining space.
 
+### Batch layout planning
+
+Use `plan_layout` when several services request different prefix lengths and
+some address space is already fixed or reserved. The method is available on
+IPv4 and IPv6 networks and as `IPAddress.plan_layout`.
+
+```ruby
+parent = IPAddress("10.0.0.0/27")
+layout = parent.plan_layout(
+  [29, 30],
+  fixed: [IPAddress("10.0.0.8/30")],
+  reserved: ["10.0.0.12/31"]
+)
+
+layout.map(&:to_string) #=> ["10.0.0.0/29", "10.0.0.16/30"]
+layout.remaining.map(&:to_string)
+#=> ["10.0.0.14/31", "10.0.0.20/30", "10.0.0.24/29"]
+```
+
+The result behaves as the array of requested, aligned subnetworks and also
+exposes `fixed_allocations`, `reserved`, and `remaining`. All requests are
+satisfied first; among complete layouts it minimizes the number of CIDR blocks
+left over, then chooses the lexicographically smallest addresses in request
+order. The operation is non-mutating and never writes network configuration.
+
+Impossible requests raise `IPAddress::Layout::Impossible` (also aliased as
+`NoSolution`). Passing `search_budget:` limits candidate attempts; if the
+limit is reached before the optimal search finishes, the exception is
+`IPAddress::Layout::BudgetExhausted` instead. With no budget, the planner uses
+CIDR block arithmetic rather than enumerating individual IPv6 addresses.
+
 #### Summarization
 
 Summarization (or aggregation) is the process when two or more networks are

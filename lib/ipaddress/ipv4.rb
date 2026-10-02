@@ -17,6 +17,7 @@ module IPAddress;
   class IPv4
     
     include IPAddress
+    include IPAddress::Layout
     include Enumerable  
     include Comparable                  
     
@@ -1145,4 +1146,3 @@ module IPAddress;
     end
   end # class IPv4
 end # module IPAddress
-

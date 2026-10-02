@@ -9,6 +9,7 @@
 # License::     Ruby License
 #
 
+require 'ipaddress/layout'
 require 'ipaddress/ipv4'
 require 'ipaddress/ipv6'
 
@@ -17,6 +18,23 @@ module IPAddress
   NAME            = "IPAddress"
   GEM             = "ipaddress"
   AUTHORS         = ["Marco Ceresa <ceresa@ieee.org>"]
+
+  def self.plan_layout(parent, requests, options = {})
+    Layout.plan(parent, requests, options)
+  end
+  def self.plan(parent, requests, options = {})
+    Layout.plan(parent, requests, options)
+  end
+  def self.allocate(parent, requests, options = {})
+    Layout.plan(parent, requests, options)
+  end
+  class << self
+    alias_method :plan_subnets, :plan_layout
+    alias_method :allocate_subnets, :plan_layout
+    alias_method :allocate_layout, :plan_layout
+    alias_method :layout, :plan_layout
+    alias_method :batch_allocate, :plan_layout
+  end
 
   #
   # Parse the argument string to create a new
