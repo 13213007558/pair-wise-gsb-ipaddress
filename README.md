@@ -630,6 +630,67 @@ This is because `172.16.10.0/22` is not a network anymore, but an host
 address.
 
 ## IPv6
+### Batch layout planning
+
+When you need to carve a parent network into subnets for several
+services at once, `IPAddress::Planner` computes a complete layout
+for you. Give it the parent network, the prefix length each service
+needs, plus any fixed allocations and reserved segments that must
+be left untouched, and it returns aligned, non-overlapping subnets
+for every request:
+
+```ruby
+result = IPAddress::Planner.plan(IPAddress("10.0.0.0/24"),
+                                 [26, 26],
+                                 reserved: [IPAddress("10.0.0.240/28")])
+
+result.subnets.map(&:to_string)
+  #=> ["10.0.0.0/26", "10.0.0.64/26"]
+
+result.free.map(&:to_string)
+  #=> ["10.0.0.128/26", "10.0.0.192/27", "10.0.0.224/28"]
+```
+
+The planner works on both IPv4 and IPv6 networks and only ever
+computes new objects: the inputs are never modified and no network
+configuration is touched. Requests can also carry names:
+
+```ruby
+result = IPAddress::Planner.plan("2001:db8::/64", {dmz: 66, web: 66})
+result.named[:dmz].to_string #=> "2001:db8::/66"
+```
+
+Layouts are chosen by the following criteria, in order: every
+request must be satisfied, then the remaining free space must be
+coverable by as few CIDR blocks as possible, and ties are broken by
+picking the lexicographically smallest subnet addresses in request
+order. The search is a complete backtracking search, so a greedy
+allocation order that gets stuck is never mistaken for global
+infeasibility; even huge IPv6 parents are handled with integer
+range arithmetic, without enumerating individual addresses.
+
+When no layout can satisfy all requests, `IPAddress::Planner::Infeasible`
+is raised. Since the search space can be large, an explicit budget
+on the number of explored candidates can be supplied; running out
+of budget raises `IPAddress::Planner::BudgetExceeded` (carrying the
+best layout found so far in `#best`), which is kept distinct from a
+proven infeasible answer:
+
+```ruby
+begin
+  IPAddress::Planner.plan("10.0.0.0/24", [24, 25])
+rescue IPAddress::Planner::Infeasible
+  # proven: no layout exists
+end
+
+begin
+  IPAddress::Planner.plan("2001:db8::/64", [126, 126, 125],
+                          reserved: ["2001:db8::ffff/128"], budget: 1_000)
+rescue IPAddress::Planner::BudgetExceeded => e
+  # search cut short; e.best holds the best layout found so far
+end
+```
+
 
 IPAddress is not only fantastic for IPv4 addresses, it's also great to handle
 IPv6 addresses family! Let's discover together how to use it in our projects.
