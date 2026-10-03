@@ -462,6 +462,67 @@ module IPAddress;
     end
 
     #
+    # Classifies this IPv6 address with respect to the given
+    # RFC 6052 network (e.g. a NAT64 prefix). Returns one of:
+    #
+    # * +:ipv4_mapped+: the address is an IPv4-mapped IPv6
+    #   address (::ffff:0:0/96) and must not be confused with
+    #   an RFC 6052 translated address
+    # * +:not_in_network+: the address does not belong to the
+    #   given network
+    # * +:invalid_reserved_bits+: the reserved "u" octet
+    #   (bits 64..71), which RFC 6052 requires to be zero, is
+    #   not zero
+    # * +:valid+: the address is a valid RFC 6052 translation
+    #   of an IPv4 address under the given network
+    #
+    #   IPAddress("64:ff9b::c000:221").rfc6052_status("64:ff9b::/96")
+    #     #=> :valid
+    #
+    #   IPAddress("64:ff9b::1:c000:221").rfc6052_status("64:ff9b::/64")
+    #     #=> :invalid_reserved_bits
+    #
+    def rfc6052_status(network)
+      net = IPAddress::RFC6052.network(network)
+      plen = net.prefix.to_i
+      return :ipv4_mapped if mapped?
+      shift = 128 - plen
+      return :not_in_network unless (to_u128 >> shift) == (net.network_u128 >> shift)
+      if plen <= 64 && IPAddress::RFC6052.reserved_bits(to_u128) != 0
+        return :invalid_reserved_bits
+      end
+      :valid
+    end
+
+    #
+    # True if this IPv6 address is a valid RFC 6052
+    # translation of an IPv4 address under the given network.
+    #
+    #   IPAddress("64:ff9b::c000:221").rfc6052?("64:ff9b::/96")
+    #     #=> true
+    #
+    def rfc6052?(network)
+      rfc6052_status(network) == :valid
+    end
+
+    #
+    # Decodes the IPv4 address embedded in this IPv6 address
+    # according to the RFC 6052 layout for the given network.
+    # Returns an IPAddress::IPv4, or nil if this address is
+    # not a valid RFC 6052 translation under the given
+    # network (see rfc6052_status).
+    #
+    #   IPAddress("64:ff9b::c000:221").to_ipv4_rfc6052("64:ff9b::/96").to_s
+    #     #=> "192.0.2.33"
+    #
+    def to_ipv4_rfc6052(network)
+      return nil unless rfc6052?(network)
+      net = IPAddress::RFC6052.network(network)
+      IPAddress::IPv4.parse_u32(
+        IPAddress::RFC6052.decode_u32(to_u128, net.prefix.to_i))
+    end
+
+    #
     # Iterates over all the IP addresses for the given
     # network (or IP address).
     #
@@ -961,4 +1022,3 @@ module IPAddress;
   end # class IPv6::Mapped
 
 end # module IPAddress
-

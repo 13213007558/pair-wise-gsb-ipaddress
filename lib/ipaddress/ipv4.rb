@@ -911,6 +911,75 @@ module IPAddress;
     end
 
     #
+    # Returns the IPv6 address resulting from embedding this
+    # IPv4 address into the given IPv6 network, following the
+    # RFC 6052 layout used by IPv4/IPv6 translators.
+    #
+    # The network must have one of the prefix lengths allowed
+    # by RFC 6052: 32, 40, 48, 56, 64 or 96.
+    #
+    #   ip = IPAddress("192.0.2.33")
+    #
+    #   ip.to_ipv6_rfc6052("64:ff9b::/96").to_s
+    #     #=> "64:ff9b::c000:221"
+    #
+    #   ip.to_ipv6_rfc6052("2001:db8::/64").to_s
+    #     #=> "2001:db8::c0:2:2100:0"
+    #
+    def to_ipv6_rfc6052(network)
+      net = IPAddress::RFC6052.network(network)
+      IPAddress::IPv6.parse_u128(
+        IPAddress::RFC6052.encode_u128(to_u32, net.network_u128, net.prefix.to_i),
+        net.prefix.to_i)
+    end
+
+    #
+    # Expresses the whole IPv4 network as the compact set of
+    # IPv6 prefixes covering exactly the addresses that,
+    # under the given RFC 6052 network, translate back into
+    # this IPv4 network.
+    #
+    # When the variable IPv4 bits fit on one side of the
+    # reserved "u" octet, the result is a single IPv6
+    # prefix:
+    #
+    #   IPAddress("192.0.2.0/24").to_ipv6_rfc6052_networks("64:ff9b::/96").map(&:to_string)
+    #     #=> ["64:ff9b::c000:200/120"]
+    #
+    # When the variable IPv4 bits straddle the reserved
+    # octet, the mapped addresses are not a contiguous
+    # block: the method returns one prefix per value of the
+    # IPv4 bits embedded before the reserved octet, instead
+    # of forcing the result into a larger, wrong network:
+    #
+    #   IPAddress("192.0.0.0/12").to_ipv6_rfc6052_networks("2001:db8:1234::/48").map(&:to_string)
+    #     #=> ["2001:db8:1234:c000::/72", "2001:db8:1234:c001::/72", ...,
+    #          "2001:db8:1234:c00f::/72"]
+    #
+    def to_ipv6_rfc6052_networks(network)
+      net = IPAddress::RFC6052.network(network)
+      plen = net.prefix.to_i
+      base = net.network_u128
+      high = IPAddress::RFC6052::HIGH_BITS[plen]
+      if @prefix.to_i >= high
+        # The fixed IPv4 bits (plus the reserved octet for
+        # prefixes shorter than /96) form a single
+        # contiguous IPv6 prefix.
+        len = plen == 96 ? 96 + @prefix.to_i : 72 + @prefix.to_i - high
+        addr = IPAddress::RFC6052.encode_u128(network_u32, base, plen)
+        [IPAddress::IPv6.parse_u128(addr, len).network]
+      else
+        # The variable IPv4 bits straddle the reserved "u"
+        # octet: one /72 prefix for each value of the IPv4
+        # bits embedded before it.
+        fixed = network_u32 >> (32 - high)
+        (0...(1 << (high - @prefix.to_i))).map do |bits|
+          IPAddress::IPv6.parse_u128(base | ((fixed | bits) << 64), 72).network
+        end
+      end
+    end
+
+    #
     # Creates a new IPv4 object from an
     # unsigned 32bits integer.
     #
@@ -1145,4 +1214,3 @@ module IPAddress;
     end
   end # class IPv4
 end # module IPAddress
-

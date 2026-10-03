@@ -9,6 +9,7 @@
 # License::     Ruby License
 #
 
+require 'ipaddress/rfc6052'
 require 'ipaddress/ipv4'
 require 'ipaddress/ipv6'
 

@@ -1015,6 +1015,64 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## RFC6052 IPv4/IPv6 translation
+
+RFC 6052 defines how IPv4 addresses are embedded into IPv6 addresses for
+stateless IPv4/IPv6 translators (such as NAT64 gateways). The embedding
+splits the IPv4 address around a reserved "u" octet (bits 64..71, which
+must be zero) and is only defined for the IPv6 prefix lengths 32, 40, 48,
+56, 64 and 96 -- not just the well-known 64:ff9b::/96 prefix.
+
+Embed an IPv4 address into any RFC 6052 network:
+
+\`\`\`ruby
+ip = IPAddress("192.0.2.33")
+
+ip.to_ipv6_rfc6052("64:ff9b::/96").to_s
+  #=> "64:ff9b::c000:221"
+ip.to_ipv6_rfc6052("2001:db8::/64").to_s
+  #=> "2001:db8::c0:2:2100:0"
+\`\`\`
+
+Translate an IPv6 address back, distinguishing the failure cases:
+
+\`\`\`ruby
+ip6 = IPAddress("64:ff9b::c000:221")
+
+ip6.rfc6052?("64:ff9b::/96")
+  #=> true
+ip6.to_ipv4_rfc6052("64:ff9b::/96").to_s
+  #=> "192.0.2.33"
+
+ip6.rfc6052_status("64:ff9b::/96")   #=> :valid
+IPAddress("2001:db9::1").rfc6052_status("2001:db8::/32")
+  #=> :not_in_network
+IPAddress("2001:db8::100:0:0:0").rfc6052_status("2001:db8::/64")
+  #=> :invalid_reserved_bits
+IPAddress("::ffff:192.0.2.33").rfc6052_status("::ffff:0:0/96")
+  #=> :ipv4_mapped
+\`\`\`
+
+IPv4-mapped IPv6 addresses (::ffff:0:0/96) are never confused with RFC 6052
+translated addresses.
+
+A whole IPv4 network can be expressed as the compact set of IPv6 prefixes
+that translate back into it. When the variable IPv4 bits straddle the
+reserved octet, the result is not a contiguous block, so multiple prefixes
+are returned instead of one larger, wrong network:
+
+\`\`\`ruby
+IPAddress("192.0.2.0/24").to_ipv6_rfc6052_networks("64:ff9b::/96").map(&:to_string)
+  #=> ["64:ff9b::c000:200/120"]
+
+IPAddress("192.0.0.0/12").to_ipv6_rfc6052_networks("2001:db8:1234::/48").map(&:to_string)
+  #=> ["2001:db8:1234:c000::/72", "2001:db8:1234:c001::/72", ...,
+  #    "2001:db8:1234:c00f::/72"]
+\`\`\`
+
+All of these methods perform pure address computation: no sockets are
+created and no external network is ever queried.
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
