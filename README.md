@@ -1015,6 +1015,74 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+#### RFC 6052 IPv4-embedded addresses (NAT64)
+
+RFC 6052 defines how IPv4 addresses are embedded into IPv6 addresses for
+IPv4/IPv6 translators such as NAT64 gateways. Unlike IPv4-mapped addresses,
+the IPv4 bits are placed inside a configurable translator prefix, whose
+length must be one of 32, 40, 48, 56, 64 or 96. The `IPAddress::RFC6052`
+class handles the encoding and decoding; it only performs address
+calculations and never touches the network.
+
+Without arguments, the Well-Known Prefix `64:ff9b::/96` is used:
+
+```ruby
+nat64 = IPAddress::RFC6052.new
+
+nat64.encode("192.0.2.33").to_s
+  #=> "64:ff9b::c000:221"
+
+nat64.decode("64:ff9b::c000:221").to_s
+  #=> "192.0.2.33"
+```
+
+A Network-Specific Prefix with any of the allowed lengths works the same
+way:
+
+```ruby
+nsp = IPAddress::RFC6052.new "2001:db8:100::/40"
+
+nsp.encode("192.0.2.33").to_s
+  #=> "2001:db8:1c0:2:21::"
+```
+
+When decoding, `#decode_status` tells apart addresses that do not belong
+to the translator prefix, addresses whose reserved "u" octet (bits 64-71)
+is not zero, IPv4-mapped addresses (which are a different mechanism and are
+never confused with RFC 6052 mappings) and valid mappings:
+
+```ruby
+nat64.decode_status "64:ff9b::c000:221"  #=> :valid
+nat64.decode_status "2001:db8::1"        #=> :not_in_network
+nat64.decode_status "::ffff:192.0.2.33"  #=> :ipv4_mapped
+
+nsp.decode_status "2001:db8:1c0:2:2100::"  #=> :invalid_reserved_bits
+```
+
+A whole IPv4 network can be mapped at once to the compact set of IPv6
+prefixes representing it. When the embedded IPv4 bits are contiguous the
+result is a single IPv6 network:
+
+```ruby
+nat64.encode_network("192.0.2.0/24").map{|i| i.to_string}
+  #=> ["64:ff9b::c000:200/120"]
+```
+
+When the IPv4 network boundary falls across the reserved "u" octet, the
+mapped addresses do not form a contiguous IPv6 network. In that case the
+exact set of IPv6 networks is returned, without aggregating them into a
+larger network that would include invalid or unrelated addresses:
+
+```ruby
+nsp56 = IPAddress::RFC6052.new "2001:db8:100:200::/56"
+
+nsp56.encode_network("192.0.0.0/6").map{|i| i.to_string}
+  #=> ["2001:db8:100:2c0::/72",
+  #    "2001:db8:100:2c1::/72",
+  #    "2001:db8:100:2c2::/72",
+  #    "2001:db8:100:2c3::/72"]
+```
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
