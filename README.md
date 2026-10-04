@@ -1015,6 +1015,66 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## Keyed reversible anonymization
+
+`IPAddress::Anonymizer` provides deterministic, reversible anonymization for
+IPv4 and IPv6 addresses without maintaining a mapping table. For any two input
+addresses, the transformed addresses have exactly the same longest common
+prefix length as the originals.
+
+Use 32 bytes of cryptographically secure random key material:
+
+```ruby
+require 'securerandom'
+
+key = SecureRandom.random_bytes(32)
+anonymizer = IPAddress::Anonymizer.new(key)
+
+anonymous = anonymizer.forward('192.0.2.10')
+original  = anonymizer.inverse(anonymous)
+```
+
+Network prefixes use the same bit transformation as addresses. Host bits are
+cleared and the prefix length is preserved:
+
+```ruby
+network = IPAddress('192.0.2.0/24')
+
+anonymous_network = anonymizer.forward_network(network)
+original_network  = anonymizer.inverse_network(anonymous_network)
+```
+
+`/0` maps to the address family's zero prefix (`0.0.0.0/0` or `::/0`), and a
+single address is represented by `/32` or `/128`.
+
+The construction is a keyed binary-tree permutation. At bit position `i`, with
+the already processed original prefix `p_i`, output bit `q_i` is:
+
+```
+q_i = x_i XOR PRF(K_family, i, p_i)
+```
+
+Each PRF bit chooses the identity or swap permutation for the two children of
+that trie node. Inversion recomputes the same PRF bits while rebuilding the
+original prefix. The PRF is HMAC-SHA256. IPv4 and IPv6 PRF keys are derived
+with HKDF-HMAC-SHA256 under fixed, distinct domain tags, so the same address
+bits in the two families do not share a mapping. The algorithm is stateless,
+apart from the key held by the anonymizer instance, so different processes
+with the same key produce identical results. Rotating the key prevents old
+ciphertext from being decoded with the new key.
+
+The fixed test vectors below use the 32-byte ASCII key
+`0123456789ABCDEF0123456789ABCDEF`:
+
+| Input | Output |
+| --- | --- |
+| `192.0.2.10/32` | `6.88.30.204/32` |
+| `192.0.2.0/24` | `6.88.30.0/24` |
+| `0.0.0.0/0` | `0.0.0.0/0` |
+| `2001:db8::1/128` | `4f76:5f59:1b14:b02f:9ae:406b:3a62:98d2/128` |
+| `2001:db8::/32` | `4f76:5f59::/32` |
+| `::/0` | `::/0` |
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
