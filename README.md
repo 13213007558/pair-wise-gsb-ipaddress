@@ -1015,6 +1015,80 @@ ip6.to_s #=> "::ffff:172.16.10.1/128"
 
 making it a mapped IPv6 compatible address.
 
+## Keyed prefix-preserving anonymization
+
+Use `IPAddress::PrefixPreservingAnonymizer` for reversible, stateless
+anonymization that preserves the longest common prefix of any two addresses.
+The implementation stores no global or per-instance address mapping.
+
+Create and store a random 256-bit key as binary data:
+
+```ruby
+key = IPAddress::PrefixPreservingAnonymizer.generate_key
+anonymizer = IPAddress::PrefixPreservingAnonymizer.new(key)
+```
+
+The key must be exactly 32 random bytes, preferably generated with
+`SecureRandom`. Keep the key secret and protect it at rest. Mapping is
+reversible for anyone who has the key. Rotating to a new independent key
+produces an independent mapping; outputs made with the old key cannot be
+deanonymized with the new key.
+
+IPv4 and IPv6 are key-separated. The master key is expanded with
+HKDF-SHA256 using a fixed construction salt and separate `IPv4` and `IPv6`
+info labels. Every node of the binary address tree uses HMAC-SHA256 with
+the family subkey as a pseudorandom function.
+
+For an input bit string `x`, output bit `d` is:
+
+```text
+y[d] = x[d] XOR PRF_family(d, x[0...d])
+```
+
+The inverse reconstructs input bits from left to right and applies the same
+XOR. This Crypto-PAn-style prefix-tree pseudorandom permutation is bijective
+and preserves the exact longest common prefix length of every address pair.
+
+`forward` and `reverse` map complete addresses and preserve the prefix field:
+
+```ruby
+anonymized = anonymizer.forward('198.51.100.10')
+anonymized.to_string #=> "80.120.42.98/32"
+
+original = anonymizer.reverse(anonymized)
+original.to_string   #=> "198.51.100.10/32"
+```
+
+Use `forward_network` and `reverse_network` for canonical network values.
+These methods normalize with `#network`, so `/0`, individual addresses
+(`/32` or `/128`), and network addresses are all handled. The first `p`
+transformed bits from a network equal transforming any address in it:
+
+```ruby
+anonymizer.forward_network('198.51.100.5/24').to_string
+#=> "80.120.42.0/24"
+
+anonymizer.reverse_network('80.120.42.0/24').to_string
+#=> "198.51.100.0/24"
+
+anonymizer.forward_network('::/0').to_string
+#=> "::/0"
+```
+
+Fixed vectors below use the fixed binary key whose ASCII spelling is
+`0123456789abcdef0123456789abcdef`:
+
+| Input | `forward` |
+| --- | --- |
+| `198.51.100.10` | `80.120.42.98/32` |
+| `198.51.100.20` | `80.120.42.113/32` |
+| `0.0.0.0/0` | `217.89.248.57/0` |
+| `198.51.100.5/24` network | `80.120.42.0/24` |
+| `2001:db8::1` | `7717:3342:28a4:fca9:5bfa:3335:8bf3:fe0a/128` |
+| `2001:db8::2` | `7717:3342:28a4:fca9:5bfa:3335:8bf3:fe08/128` |
+| `::/0` | `546f:1cb9:2755:1173:d3b1:3939:ca89:d44e/0` |
+| `2001:db8:1234:5678::1/64` network | `7717:3342:360d:e152::/64` |
+
 ## Why not using IPAddr?
 
 IPAddr is the IP addresses library that comes with Ruby standard lib. We found
