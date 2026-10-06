@@ -11,12 +11,21 @@
 
 require 'ipaddress/ipv4'
 require 'ipaddress/ipv6'
+require 'ipaddress/planner'
 
 module IPAddress
 
   NAME            = "IPAddress"
   GEM             = "ipaddress"
   AUTHORS         = ["Marco Ceresa <ceresa@ieee.org>"]
+
+  def self.plan(options)
+    Planner.plan(options)
+  end
+  class << self
+    alias_method :plan_allocation, :plan
+    alias_method :allocate_plan, :plan
+  end
 
   #
   # Parse the argument string to create a new

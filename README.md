@@ -519,6 +519,59 @@ network.split(11)
 As you can see, most of the networks are `/28`, with a few `/27` and one `/26`
 to fill up the remaining space.
 
+#### Allocation planning
+
+`IPAddress.plan` calculates legal CIDR allocations without modifying any
+network device or mutating address objects. It is useful when several address
+pools are available, some subnets and individual ranges are already in use,
+and tenants request different prefix lengths.
+
+The planner optimizes, in order, for satisfying every request, enabling the
+fewest pools, and leaving the fewest remaining fragments. Ties use a fixed
+lexicographic order, so repeated runs return the same result.
+
+```ruby
+result = IPAddress.plan(
+  pools: [
+    { id: :pool_a, cidr: '10.0.0.0/28' },
+    { id: :pool_b, cidr: '10.0.0.16/28' }
+  ],
+  existing: ['10.0.0.0/32'],
+  reserved: ['10.0.0.1/32'],
+  forbidden: ['10.0.0.14..10.0.0.15'],
+  requests: [
+    { id: :tenant_a, pools: [:pool_a], min_prefix: 29, max_prefix: 30 },
+    { id: :tenant_b, prefix: 31, alignment: 8 }
+  ],
+  budget: 10_000
+)
+
+result.status              #=> :optimal
+result.allocations.map do |allocation|
+  [allocation[:request_id], allocation[:pool_id], allocation[:cidr]]
+end
+```
+
+Each request accepts `min_prefix`/`max_prefix` (or `prefix`), `pools`, and an
+optional power-of-two `alignment`. Pools and unavailable intervals accept CIDR
+strings or explicit `start`/`to` ranges. Existing allocations, reserved
+addresses, and forbidden intervals are all excluded from new allocations.
+
+`status` is one of:
+
+* `:optimal`: every request is allocated and the bounded search proved the
+  pool/fragment objective;
+* `:best_effort`: every request is allocated, but the search budget ran out
+  before proving optimality;
+* `:budget_exceeded`: the budget ran out before every request could be
+  allocated (`partial_allocations` and `unallocated_requests` identify the
+  work found so far);
+* `:infeasible`: the complete search proved no allocation exists.
+
+When a request cannot fit because alignment pushes it into an existing,
+reserved, or forbidden interval, `blockers` identifies that interval and the
+candidate alignment window. It does not merely report total free addresses.
+
 #### Summarization
 
 Summarization (or aggregation) is the process when two or more networks are
