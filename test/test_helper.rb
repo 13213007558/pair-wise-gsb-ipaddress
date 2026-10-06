@@ -1,7 +1,11 @@
 require 'rubygems'
 require 'minitest/autorun'
-require 'simplecov'
-SimpleCov.start
+begin
+  require 'simplecov'
+  SimpleCov.start
+rescue LoadError
+  # simplecov is optional; skip coverage when it is not installed
+end
 
 $LOAD_PATH.unshift(File.dirname(__FILE__))
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
@@ -33,5 +37,4 @@ module Minitest
     
   end
 end
-
 

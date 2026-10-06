@@ -629,6 +629,52 @@ ip.supernet(22).to_s #=> "172.16.8.0/22"
 This is because `172.16.10.0/22` is not a network anymore, but an host
 address.
 
+### Planning allocations
+
+`IPAddress.plan` helps you plan CIDR allocations across a set of address
+pools without touching any real network device. You describe the pools,
+the space that is already taken (existing allocations, reserved ranges
+and forbidden ranges) and a list of tenant requests; the planner returns
+a valid assignment of CIDR blocks.
+
+```ruby
+result = IPAddress.plan(
+  pools:       ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],
+  allocations: ["10.1.0.0/16"],   # already assigned subnets
+  reserved:    ["10.2.0.0/16"],   # reserved, must stay free
+  forbidden:   ["192.168.0.0/24"],# must never be handed out
+  requests:    [
+    {name: "tenant-a", prefix: 20..24, align: 20},
+    {name: "tenant-b", prefix: 24, pools: ["192.168.0.0/16"]},
+  ])
+
+result.status       #=> :feasible
+result.assignments  #=> {"tenant-a" => "10.0.0.0/24", "tenant-b" => "192.168.1.0/24"}
+result.pools_used   #=> ["10.0.0.0/8", "192.168.0.0/16"]
+```
+
+Each request can restrict the candidate pools, accept a range of prefix
+lengths and require the block to be aligned to a given boundary. The
+planner optimizes, in order: satisfy every request, enable as few pools
+as possible, leave as few free fragments as possible; remaining ties are
+broken deterministically, so repeated runs always return the same plan.
+
+The search is bounded by a node budget (`max_nodes:`). If the budget
+runs out, the result still contains the best plan found so far and the
+status tells you nothing was proven: `:feasible` when a complete plan
+was found, `:unknown` otherwise. `:infeasible` is only returned when
+the whole search space has been exhausted, and in that case
+`result.diagnostics` explains, for every unplaced request, which
+existing intervals block it in each candidate pool:
+
+```ruby
+result.diagnostics
+#=> {"tenant-a" => {reason: :no_aligned_space,
+#     pools: [{pool: "10.0.0.0/8", free_addresses: 4096,
+#              required_addresses: 4096,
+#              blockers: [{range: "10.1.0.0/16", kind: :allocation}, ...]}]}}
+```
+
 ## IPv6
 
 IPAddress is not only fantastic for IPv4 addresses, it's also great to handle

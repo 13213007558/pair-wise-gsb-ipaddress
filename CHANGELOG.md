@@ -13,6 +13,9 @@ Changelog
 
 - Add allocate() method
 - Add IPv4 and IPv6 subnet validation
+- Add IPAddress.plan: plan CIDR allocations across address pools with
+  per-request pool restrictions, prefix ranges and alignment, honoring
+  reserved ranges, existing allocations and forbidden ranges
 
 
 ## 0.8.3 - 2016-02-17
